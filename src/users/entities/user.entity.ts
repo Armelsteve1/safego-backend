@@ -50,6 +50,12 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  @Column({ nullable: true })
+  confirmationToken?: string;
+
+  @Column({ nullable: true })
+  resetToken?: string;
+
   @BeforeInsert()
   async hashPassword() {
     this.password = await bcrypt.hash(this.password, 10);
