@@ -1,27 +1,19 @@
 import { Module } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { CognitoService } from './cognito.service';
 import { AuthController } from './auth.controller';
-import { JwtStrategy } from './jwt.strategy';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from '../users/entities/user.entity';
 import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { CognitoAuthGuard } from './cognito.guard';
+import { JwtStrategy } from './jwt.strategy';
 
 @Module({
   imports: [
-    ConfigModule,
-    TypeOrmModule.forFeature([User]),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '7d' },
-      }),
-      inject: [ConfigService],
+    JwtModule.register({
+      secret: process.env.COGNITO_CLIENT_ID,
+      signOptions: { expiresIn: '1h' },
     }),
   ],
-  providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
-  exports: [AuthService],
+  providers: [CognitoService, CognitoAuthGuard, JwtStrategy],
+  exports: [CognitoService, CognitoAuthGuard, JwtStrategy, JwtModule],
 })
 export class AuthModule {}

@@ -1,65 +1,83 @@
-import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { User, UserRole } from '../users/entities/user.entity';
-import { Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
+import { Controller, Post, Body, Delete, Req, UseGuards } from '@nestjs/common';
+import { CognitoService } from './cognito.service';
+import { CognitoAuthGuard } from './cognito.guard';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import {
+  RegisterDto,
+  LoginDto,
+  ConfirmEmailDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from './dto/auth.dto';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    @InjectRepository(User) private readonly userRepository: Repository<User>,
-  ) {}
+  constructor(private readonly cognitoService: CognitoService) {}
 
+  @ApiOperation({ summary: 'Inscription d’un utilisateur' })
+  @ApiResponse({ status: 201, description: 'Utilisateur inscrit avec succès' })
+  @ApiResponse({ status: 400, description: 'Email déjà utilisé' })
   @Post('register')
-  async register(
-    @Body() body: { email: string; password: string; role?: UserRole },
-  ) {
-    const existingUser = await this.userRepository.findOne({
-      where: { email: body.email },
-    });
-    if (existingUser) {
-      throw new UnauthorizedException('Email already exists');
-    }
-
-    const hashedPassword = await this.authService.hashPassword(body.password);
-    let isValidated = true;
-    if (body.role === UserRole.DRIVER || body.role === UserRole.AGENCY) {
-      isValidated = false;
-    }
-
-    const user = this.userRepository.create({
-      email: body.email,
-      password: hashedPassword,
-      role: body.role || UserRole.USER,
-      isValidated,
-    });
-
-    await this.userRepository.save(user);
-    return {
-      message: 'User registered successfully',
-      requiresValidation: !isValidated,
-    };
+  async register(@Body() body: RegisterDto) {
+    return this.cognitoService.signUp(
+      body.email,
+      body.password,
+      body.role,
+      body.firstName,
+      body.lastName,
+      body.username,
+    );
   }
 
+  @ApiOperation({ summary: 'Connexion utilisateur' })
+  @ApiResponse({ status: 200, description: 'Connexion réussie' })
+  @ApiResponse({ status: 401, description: 'Identifiants incorrects' })
   @Post('login')
-  async login(@Body() body: { email: string; password: string }) {
-    const user = await this.userRepository.findOne({
-      where: { email: body.email },
-      select: ['id', 'email', 'password', 'role', 'isValidated', 'isVerified'],
-    });
+  async login(@Body() body: LoginDto) {
+    return this.cognitoService.signIn(body.email, body.password);
+  }
 
-    if (
-      !user ||
-      !(await this.authService.comparePasswords(body.password, user.password))
-    ) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+  @ApiOperation({ summary: 'Confirmer l’email après l’inscription' })
+  @Post('confirm-email')
+  async confirmEmail(@Body() body: ConfirmEmailDto) {
+    return this.cognitoService.confirmSignUp(body.username, body.code);
+  }
 
-    return {
-      token: await this.authService.generateToken(user),
-      isVerified: user.isVerified,
-      isValidated: user.isValidated,
-    };
+  @ApiOperation({ summary: 'Demander une réinitialisation de mot de passe' })
+  @Post('forgot-password')
+  async forgotPassword(@Body() body: ForgotPasswordDto) {
+    return this.cognitoService.forgotPassword(body.username);
+  }
+
+  @ApiOperation({ summary: 'Réinitialiser le mot de passe' })
+  @Post('reset-password')
+  async resetPassword(@Body() body: ResetPasswordDto) {
+    return this.cognitoService.resetPassword(
+      body.username,
+      body.code,
+      body.newPassword,
+    );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(CognitoAuthGuard)
+  @ApiOperation({ summary: 'Supprimer un compte utilisateur' })
+  @Delete('delete-account')
+  async deleteAccount(@Req() req) {
+    return this.cognitoService.deleteAccount(req.user.id);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(CognitoAuthGuard)
+  @ApiOperation({ summary: 'Déconnexion de l’utilisateur' })
+  @Post('logout')
+  async logout(@Req() req) {
+    return this.cognitoService.logout(req.user.accessToken);
   }
 }
