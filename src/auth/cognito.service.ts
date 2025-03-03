@@ -5,12 +5,10 @@ import {
 } from 'amazon-cognito-identity-js';
 import * as AWS from 'aws-sdk';
 import * as crypto from 'crypto';
-
 @Injectable()
 export class CognitoService {
   private userPool: CognitoUserPool;
   private cognitoIdentityServiceProvider: AWS.CognitoIdentityServiceProvider;
-
   constructor() {
     this.userPool = new CognitoUserPool({
       UserPoolId: process.env.COGNITO_USER_POOL_ID,
@@ -24,7 +22,7 @@ export class CognitoService {
   }
 
   /**
-   * 🔥 Calcul du SECRET_HASH
+   * 🔐 Generate Cognito Secret Hash (if needed)
    */
   private calculateSecretHash(username: string): string {
     return crypto
@@ -34,103 +32,117 @@ export class CognitoService {
   }
 
   /**
-   * 🔥 1️⃣ Inscription d'un utilisateur
+   * 🛠️ Helper function to update user attributes
+   */
+  private updateUserAttributes(
+    username: string,
+    attributes: { Name: string; Value: string }[],
+  ) {
+    return this.cognitoIdentityServiceProvider
+      .adminUpdateUserAttributes({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID,
+        Username: username,
+        UserAttributes: attributes,
+      })
+      .promise()
+      .then(() => ({ message: `User ${username} updated successfully.` }))
+      .catch((error) => {
+        throw new UnauthorizedException(`Update failed: ${error.message}`);
+      });
+  }
+
+  /**
+   * 📝 Register a new user (Driver/Agency needs validation)
    */
   async signUp(
     email: string,
     password: string,
     role: string,
-    firstName: string,
-    lastName: string,
-    username: string,
+    family_name?: string,
+    given_name?: string,
+    username?: string,
     agencyName?: string,
   ) {
     if (role === 'agency' && !agencyName) {
       throw new UnauthorizedException('Agency must provide an agencyName');
     }
 
-    const attributeList = [
-      new CognitoUserAttribute({ Name: 'email', Value: email }),
-      new CognitoUserAttribute({ Name: 'custom:role', Value: role }),
-      new CognitoUserAttribute({ Name: 'custom:firstName', Value: firstName }),
-      new CognitoUserAttribute({ Name: 'custom:lastName', Value: lastName }),
-      new CognitoUserAttribute({ Name: 'custom:username', Value: username }),
+    const attributes = [
+      { Name: 'email', Value: email },
+      { Name: 'custom:role', Value: role },
+      { Name: 'custom:isValidated', Value: 'false' },
+      { Name: 'custom:isVerified', Value: 'false' },
     ];
 
-    if (role === 'agency') {
-      attributeList.push(
-        new CognitoUserAttribute({
-          Name: 'custom:agencyName',
-          Value: agencyName,
-        }),
-      );
+    if (family_name) {
+      attributes.push({ Name: 'family_name', Value: family_name });
+    }
+
+    if (given_name) {
+      attributes.push({ Name: 'given_name', Value: given_name });
+    }
+
+    if (role === 'agency' && (!agencyName || agencyName.trim() === '')) {
+      throw new UnauthorizedException('Agency must provide an agencyName');
+    } else if (role === 'agency') {
+      attributes.push({ Name: 'custom:agencyName', Value: agencyName });
     }
 
     const params = {
       ClientId: process.env.COGNITO_CLIENT_ID,
-      Username: email,
+      Username: username || email,
       Password: password,
-      UserAttributes: attributeList,
+      UserAttributes: attributes.map((attr) => new CognitoUserAttribute(attr)),
       SecretHash: this.calculateSecretHash(email),
     };
 
-    return new Promise((resolve, reject) => {
-      this.cognitoIdentityServiceProvider.signUp(
-        params,
-        async (err, result) => {
-          if (err) reject(new UnauthorizedException(err.message));
-          else {
-            try {
-              await this.addUserToGroup(email, role);
-              resolve({
-                message: `User registered successfully in group ${role}. Please verify your email.`,
-                userId: result?.UserSub,
-              });
-            } catch (error) {
-              reject(new UnauthorizedException(error.message));
-            }
-          }
-        },
-      );
-    });
-  }
-
-  /**
-   * 🔥 2️⃣ Ajouter un utilisateur à un groupe Cognito
-   */
-  async addUserToGroup(email: string, role: string) {
-    const params = {
-      GroupName: role,
-      UserPoolId: process.env.COGNITO_USER_POOL_ID,
-      Username: email,
-    };
-
-    return this.cognitoIdentityServiceProvider
-      .adminAddUserToGroup(params)
-      .promise();
-  }
-
-  /**
-   * 🔥 3️⃣ Confirmer un compte utilisateur avec le code reçu par email
-   */
-  async confirmSignUp(username: string, code: string) {
-    const params = {
-      ClientId: process.env.COGNITO_CLIENT_ID,
-      Username: username,
-      ConfirmationCode: code,
-      SecretHash: this.calculateSecretHash(username),
-    };
-
     try {
-      await this.cognitoIdentityServiceProvider.confirmSignUp(params).promise();
-      return { message: 'Email verified successfully.' };
+      const result = await this.cognitoIdentityServiceProvider
+        .signUp(params)
+        .promise();
+      await this.addUserToGroup(email, role);
+      return {
+        message: `User registered in group ${role}. Please verify your email.`,
+        userId: result?.UserSub,
+      };
     } catch (error) {
       throw new UnauthorizedException(error.message);
     }
   }
 
   /**
-   * 🔥 4️⃣ Connexion (Login)
+   * 🔄 Add a user to a Cognito Group
+   */
+  async addUserToGroup(email: string, role: string) {
+    return this.cognitoIdentityServiceProvider
+      .adminAddUserToGroup({
+        GroupName: role,
+        UserPoolId: process.env.COGNITO_USER_POOL_ID,
+        Username: email,
+      })
+      .promise();
+  }
+
+  /**
+   * ✅ Confirm user email verification
+   */
+  async confirmSignUp(username: string, code: string) {
+    return this.cognitoIdentityServiceProvider
+      .confirmSignUp({
+        ClientId: process.env.COGNITO_CLIENT_ID,
+        Username: username,
+        ConfirmationCode: code,
+        SecretHash: this.calculateSecretHash(username),
+      })
+      .promise()
+      .then(() => ({ message: 'Email verified successfully.' }))
+      .catch((error) => {
+        throw new UnauthorizedException(error.message);
+      });
+  }
+
+  /**
+   * 🔑 User login with email/password
    */
   async signIn(email: string, password: string) {
     const params = {
@@ -147,13 +159,11 @@ export class CognitoService {
       const response = await this.cognitoIdentityServiceProvider
         .initiateAuth(params)
         .promise();
-      const userGroups = await this.getUserGroups(email);
-
       return {
         accessToken: response.AuthenticationResult.AccessToken,
         idToken: response.AuthenticationResult.IdToken,
         refreshToken: response.AuthenticationResult.RefreshToken,
-        groups: userGroups,
+        groups: await this.getUserGroups(email),
       };
     } catch (error) {
       throw new UnauthorizedException(error.message);
@@ -161,102 +171,194 @@ export class CognitoService {
   }
 
   /**
-   * 🔥 5️⃣ Récupérer les groupes d'un utilisateur
+   * 🔍 Get user's Cognito groups
    */
   async getUserGroups(email: string) {
+    return this.cognitoIdentityServiceProvider
+      .adminListGroupsForUser({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID,
+        Username: email,
+      })
+      .promise()
+      .then(
+        (response) => response.Groups?.map((group) => group.GroupName) || [],
+      )
+      .catch((error) => {
+        throw new UnauthorizedException(
+          `Failed to retrieve user groups: ${error.message}`,
+        );
+      });
+  }
+
+  /**
+   * 🔄 Send a password reset request
+   */
+  async forgotPassword(username: string) {
+    return this.cognitoIdentityServiceProvider
+      .forgotPassword({
+        ClientId: process.env.COGNITO_CLIENT_ID,
+        Username: username,
+        SecretHash: this.calculateSecretHash(username),
+      })
+      .promise()
+      .then(() => ({ message: 'Password reset code sent to email' }))
+      .catch((error) => {
+        throw new UnauthorizedException(error.message);
+      });
+  }
+
+  /**
+   * 🔄 Reset password with confirmation code
+   */
+  async resetPassword(username: string, code: string, newPassword: string) {
+    return this.cognitoIdentityServiceProvider
+      .confirmForgotPassword({
+        ClientId: process.env.COGNITO_CLIENT_ID,
+        Username: username,
+        ConfirmationCode: code,
+        Password: newPassword,
+        SecretHash: this.calculateSecretHash(username),
+      })
+      .promise()
+      .then(() => ({ message: 'Password reset successfully' }))
+      .catch((error) => {
+        throw new UnauthorizedException(error.message);
+      });
+  }
+
+  /**
+   * ❌ Delete a user account
+   */
+  async deleteAccount(username: string) {
+    return this.cognitoIdentityServiceProvider
+      .adminDeleteUser({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID,
+        Username: username,
+      })
+      .promise()
+      .then(() => ({ message: 'User account deleted successfully' }))
+      .catch((error) => {
+        throw new UnauthorizedException(error.message);
+      });
+  }
+
+  /**
+   * 🚪 User logout (global sign-out)
+   */
+  async logout(accessToken: string) {
+    if (!accessToken) {
+      throw new UnauthorizedException('No AccessToken provided');
+    }
+
+    try {
+      await this.cognitoIdentityServiceProvider
+        .globalSignOut({ AccessToken: accessToken })
+        .promise();
+      return { message: 'User successfully logged out.' };
+    } catch (error) {
+      console.error('Logout failed:', error.message);
+      throw new UnauthorizedException(`Logout failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * ✅ Verify a user (Admin only)
+   */
+  async verifyUser(username: string) {
+    return this.updateUserAttributes(username, [
+      { Name: 'custom:isVerified', Value: 'true' },
+    ]);
+  }
+
+  /**
+   * 🔍 List all users (Admin only)
+   */
+  async listUsers() {
+    return this.cognitoIdentityServiceProvider
+      .listUsers({ UserPoolId: process.env.COGNITO_USER_POOL_ID })
+      .promise()
+      .then((data) =>
+        data.Users.map((user) => ({
+          username: user.Username,
+          email: user.Attributes.find((attr) => attr.Name === 'email')?.Value,
+          role: user.Attributes.find((attr) => attr.Name === 'custom:role')
+            ?.Value,
+          isValidated: user.Attributes.find(
+            (attr) => attr.Name === 'custom:isValidated',
+          )?.Value,
+          isVerified: user.Attributes.find(
+            (attr) => attr.Name === 'custom:isVerified',
+          )?.Value,
+        })),
+      )
+      .catch((error) => {
+        throw new UnauthorizedException(
+          `Failed to list users: ${error.message}`,
+        );
+      });
+  }
+
+  /**
+   * ✅ Validate a Driver/Agency (Admin only)
+   */
+  async validateUser(username: string) {
+    return this.updateUserAttributes(username, [
+      { Name: 'custom:isValidated', Value: 'true' },
+    ]);
+  }
+  // fix todo
+  async refreshToken(refreshToken: string, email: string) {
     const params = {
-      UserPoolId: process.env.COGNITO_USER_POOL_ID,
-      Username: email,
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      ClientId: process.env.COGNITO_CLIENT_ID,
+      AuthParameters: {
+        REFRESH_TOKEN: refreshToken,
+        SECRET_HASH: this.calculateSecretHash(email),
+      },
     };
 
     try {
       const response = await this.cognitoIdentityServiceProvider
-        .adminListGroupsForUser(params)
+        .initiateAuth(params)
         .promise();
-      return response.Groups
-        ? response.Groups.map((group) => group.GroupName)
-        : [];
+
+      return {
+        accessToken: response.AuthenticationResult.AccessToken,
+        idToken: response.AuthenticationResult.IdToken,
+      };
     } catch (error) {
       throw new UnauthorizedException(
-        `Failed to retrieve user groups: ${error.message}`,
+        `Failed to refresh token: ${error.message}`,
       );
     }
   }
-
-  /**
-   * 🔥 6️⃣ Réinitialisation du mot de passe (envoi du code)
-   */
-  async forgotPassword(username: string) {
-    const params = {
-      ClientId: process.env.COGNITO_CLIENT_ID,
-      Username: username,
-      SecretHash: this.calculateSecretHash(username),
-    };
-
-    try {
-      await this.cognitoIdentityServiceProvider
-        .forgotPassword(params)
-        .promise();
-      return { message: 'Password reset code sent to email' };
-    } catch (error) {
-      throw new UnauthorizedException(error.message);
-    }
-  }
-
-  /**
-   * 🔥 7️⃣ Réinitialisation du mot de passe (nouveau mot de passe)
-   */
-  async resetPassword(username: string, code: string, newPassword: string) {
-    const params = {
-      ClientId: process.env.COGNITO_CLIENT_ID,
-      Username: username,
-      ConfirmationCode: code,
-      Password: newPassword,
-      SecretHash: this.calculateSecretHash(username),
-    };
-
-    try {
-      await this.cognitoIdentityServiceProvider
-        .confirmForgotPassword(params)
-        .promise();
-      return { message: 'Password reset successfully' };
-    } catch (error) {
-      throw new UnauthorizedException(error.message);
-    }
-  }
-
-  /**
-   * 🔥 8️⃣ Supprimer un compte utilisateur
-   */
-  async deleteAccount(username: string) {
-    const params = {
-      UserPoolId: process.env.COGNITO_USER_POOL_ID,
-      Username: username,
-    };
-
-    try {
-      await this.cognitoIdentityServiceProvider
-        .adminDeleteUser(params)
-        .promise();
-      return { message: 'User account deleted successfully' };
-    } catch (error) {
-      throw new UnauthorizedException(error.message);
-    }
-  }
-
-  /**
-   * 🔥 9️⃣ Déconnexion globale (invalidate token)
-   */
-  async logout(accessToken: string) {
-    const params = {
-      AccessToken: accessToken,
-    };
-
-    try {
-      await this.cognitoIdentityServiceProvider.globalSignOut(params).promise();
-      return { message: 'User successfully logged out.' };
-    } catch (error) {
-      throw new UnauthorizedException(error.message);
-    }
+  async listPendingValidationUsers() {
+    return this.cognitoIdentityServiceProvider
+      .listUsers({ UserPoolId: process.env.COGNITO_USER_POOL_ID })
+      .promise()
+      .then((data) =>
+        data.Users.filter((user) =>
+          user.Attributes.some(
+            (attr) =>
+              attr.Name === 'custom:isValidated' && attr.Value === 'false',
+          ),
+        ).map((user) => ({
+          username: user.Username,
+          email: user.Attributes.find((attr) => attr.Name === 'email')?.Value,
+          role: user.Attributes.find((attr) => attr.Name === 'custom:role')
+            ?.Value,
+          isValidated: user.Attributes.find(
+            (attr) => attr.Name === 'custom:isValidated',
+          )?.Value,
+          isVerified: user.Attributes.find(
+            (attr) => attr.Name === 'custom:isVerified',
+          )?.Value,
+        })),
+      )
+      .catch((error) => {
+        throw new UnauthorizedException(
+          `Failed to list pending users: ${error.message}`,
+        );
+      });
   }
 }
