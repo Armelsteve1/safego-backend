@@ -14,7 +14,7 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('SafeGo API')
-    .setDescription('Documentation de l’API SafeGo')
+    .setDescription('SafeGo API documentation')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
