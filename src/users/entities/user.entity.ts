@@ -2,18 +2,14 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
   BeforeInsert,
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-
-export enum UserRole {
-  USER = 'user',
-  DRIVER = 'driver',
-  AGENCY = 'agency',
-  ADMIN = 'admin',
-}
+import { Trip } from 'src/trips/entities/trip.entity';
+import { UserRole } from 'src/common/user-role.enum';
 
 @Entity()
 export class User {
@@ -26,7 +22,7 @@ export class User {
   @Column({ select: false })
   password: string;
 
-  @Column({ default: UserRole.USER })
+  @Column({ type: 'enum', enum: UserRole })
   role: UserRole;
 
   @Column({ default: false })
@@ -44,17 +40,14 @@ export class User {
   @Column({ nullable: true })
   phoneNumber?: string;
 
+  @OneToMany(() => Trip, (trip) => trip.createdById, { cascade: true })
+  trips: Trip[];
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
-
-  @Column({ nullable: true })
-  confirmationToken?: string;
-
-  @Column({ nullable: true })
-  resetToken?: string;
 
   @BeforeInsert()
   async hashPassword() {

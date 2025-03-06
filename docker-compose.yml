@@ -1,17 +1,31 @@
 version: '3.8'
+
 services:
   postgres:
     image: postgres:14
     container_name: safego-db
     restart: always
     environment:
-      POSTGRES_USER: postgres
+      POSTGRES_USER: armel
       POSTGRES_PASSWORD: password
       POSTGRES_DB: safego_db
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  nestjs:
+    build: .
+    container_name: safego-backend
+    restart: always
+    depends_on:
+      - postgres
+    env_file: .env
+    ports:
+      - "${PORT}:${PORT}"
+    volumes:
+      - .:/usr/src/app
+    command: npm run start:dev
 
 volumes:
   pgdata:
