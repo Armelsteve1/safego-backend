@@ -8,17 +8,14 @@ import {
   Body,
   UseGuards,
   Req,
+  Query,
 } from '@nestjs/common';
 import { TripService } from './trip.service';
 import { CognitoAuthGuard } from '../auth/cognito.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBearerAuth,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { CreateTripDto } from 'src/trips/dto/create-trip.dto';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Trips')
 @ApiBearerAuth()
@@ -29,14 +26,24 @@ export class TripController {
   @ApiOperation({ summary: 'Create a trip' })
   @UseGuards(CognitoAuthGuard)
   @Post()
-  async createTrip(@Req() req, @Body() tripData) {
-    return this.tripService.createTrip(req.user, tripData);
+  async createTrip(@Req() req, @Body() tripData: CreateTripDto) {
+    const userIdFromToken = req.user?.id;
+    return this.tripService.createTrip(userIdFromToken, tripData);
   }
 
   @ApiOperation({ summary: 'Get all validated trips' })
   @Get()
-  async getTrips() {
-    return this.tripService.getTrips();
+  async getTrips(
+    @Query('departure') departure?: string,
+    @Query('arrival') arrival?: string,
+    @Query('departureDate') departureDate?: string,
+  ) {
+    console.log('📩 Requête API reçue avec : ', {
+      departure,
+      arrival,
+      departureDate,
+    });
+    return this.tripService.getTrips(departure, arrival, departureDate);
   }
 
   @ApiOperation({ summary: 'Get a trip by ID' })

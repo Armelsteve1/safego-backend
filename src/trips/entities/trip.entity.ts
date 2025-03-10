@@ -22,6 +22,9 @@ export class Trip {
   @Column('timestamp')
   departureDate: Date;
 
+  @Column({ type: 'interval', nullable: true })
+  tripDuration: string;
+
   @Column()
   seatsAvailable: number;
 
@@ -35,7 +38,7 @@ export class Trip {
   @JoinColumn({ name: 'vehicleId' })
   vehicle: Vehicule;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid' }) // Stocke uniquement l'ID de l'utilisateur
   createdById: string;
 
   @CreateDateColumn()

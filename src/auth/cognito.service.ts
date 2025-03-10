@@ -14,6 +14,7 @@ import {
   ForgotPasswordCommand,
   ConfirmForgotPasswordCommand,
   InitiateAuthCommand,
+  AdminGetUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import * as crypto from 'crypto';
 
@@ -31,6 +32,22 @@ export class CognitoService {
     });
   }
 
+  async getUserFromCognito(accessToken: string) {
+    try {
+      const command = new AdminGetUserCommand({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID!,
+        Username: accessToken,
+      });
+
+      const user = await this.cognitoClient.send(command);
+      console.log('🔍 Cognito user:', user);
+
+      return user;
+    } catch (error) {
+      console.log('❌ Error fetching user from Cognito:', error.message);
+      throw new UnauthorizedException('Unable to fetch user from Cognito');
+    }
+  }
   /**
    * 🔐 Générer le Secret Hash pour Cognito
    */

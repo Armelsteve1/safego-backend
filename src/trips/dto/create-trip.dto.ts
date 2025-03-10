@@ -1,21 +1,41 @@
-import { IsString, IsDateString, IsInt, IsUUID } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsUUID,
+  IsNumber,
+  Min,
+  IsString,
+  IsISO8601,
+} from 'class-validator';
 
 export class CreateTripDto {
   @IsString()
+  @IsNotEmpty()
   departure: string;
 
   @IsString()
+  @IsNotEmpty()
   arrival: string;
 
-  @IsDateString()
+  @IsISO8601()
   departureDate: string;
 
-  @IsInt()
-  seatsAvailable: number;
-
-  @IsInt()
-  price: number;
+  @IsUUID()
+  @IsNotEmpty()
+  vehicleId: string;
 
   @IsUUID()
-  vehicleId: string; // UUID du véhicule
+  @IsNotEmpty()
+  createdById: string;
+
+  @IsString()
+  @IsNotEmpty()
+  tripDuration: string;
+
+  @IsNumber()
+  @Min(1)
+  seatsAvailable: number;
+
+  @IsNumber()
+  @Min(0)
+  price: number;
 }

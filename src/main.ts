@@ -22,7 +22,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
-  const port = configService.get<number>('PORT') || 3000;
+  const port = configService.get<number>('PORT') || 3001;
   await app.listen(port);
   console.log(`🚀 SafeGo API is running on http://localhost:${port}`);
   console.log(`📄 Swagger docs available at http://localhost:${port}/docs`);
