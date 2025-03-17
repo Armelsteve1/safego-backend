@@ -113,7 +113,6 @@ export class CognitoService {
       const result = await this.cognitoClient.send(command);
       await this.addUserToGroup(email, role);
 
-      // ✅ Définir le mot de passe permanent
       const setPasswordCommand = new AdminSetUserPasswordCommand({
         UserPoolId: process.env.COGNITO_USER_POOL_ID!,
         Username: email,
