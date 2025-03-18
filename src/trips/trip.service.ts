@@ -35,22 +35,25 @@ export class TripService {
     const userIdFromCognito = cognitoUser.UserAttributes.find(
       (attr) => attr.Name === 'sub',
     )?.Value;
+    const userName =
+      cognitoUser.UserAttributes.find((attr) => attr.Name === 'name')?.Value ||
+      'Inconnu';
+    const userProfilePicture =
+      cognitoUser.UserAttributes.find((attr) => attr.Name === 'picture')
+        ?.Value || null;
 
     if (!userIdFromCognito) {
       throw new ForbiddenException('Invalid user authentication');
     }
 
-    if (userIdFromCognito !== tripData.createdById) {
-      throw new ForbiddenException(
-        'You are not authorized to create a trip for another user.',
-      );
-    }
     const vehicle = await this.vehicleRepository.findOne({
       where: { id: tripData.vehicleId },
     });
+
     if (!vehicle) {
       throw new NotFoundException('Vehicle not found');
     }
+
     const existingTrip = await this.tripRepository.findOne({
       where: { vehicle: { id: tripData.vehicleId }, status: 'pending' },
     });
@@ -64,15 +67,20 @@ export class TripService {
       departure: tripData.departure,
       arrival: tripData.arrival,
       departureDate: new Date(tripData.departureDate),
+      departureTime: tripData.departureTime,
+      arrivalTime: tripData.arrivalTime,
       seatsAvailable: tripData.seatsAvailable,
       price: tripData.price,
-      tripDuration: tripData.tripDuration,
       status: 'pending',
       createdById: userIdFromCognito,
       vehicle,
+      driverName: userName,
+      driverProfilePicture: userProfilePicture,
     });
+
     return await this.tripRepository.save(newTrip);
   }
+
   /**
    * 🔥 2️⃣ Récupérer tous les trajets validés
    */

@@ -6,6 +6,9 @@ import { AdminModule } from './admin/admin.module';
 import { TripsModule } from './trips/trips.module';
 import { VehiclesModule } from './vehicules/vehicules.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { TripReview } from './reviews/entities/trip-review.entity';
+import { Trip } from './trips/entities/trip.entity';
+import { Vehicle } from './entities/vehicle.entity';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -21,6 +24,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       migrations: ['dist/migrations/*.js'],
       migrationsRun: true,
     }),
+    TypeOrmModule.forFeature([Trip, TripReview, Vehicle]),
     DatabaseModule,
     AuthModule,
     UsersModule,

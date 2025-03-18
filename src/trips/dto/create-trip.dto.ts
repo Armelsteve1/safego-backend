@@ -38,4 +38,9 @@ export class CreateTripDto {
   @IsNumber()
   @Min(0)
   price: number;
+  @IsString()
+  departureTime: string;
+
+  @IsString()
+  arrivalTime: string;
 }

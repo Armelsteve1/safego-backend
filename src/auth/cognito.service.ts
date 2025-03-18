@@ -106,9 +106,7 @@ export class CognitoService {
       Username: username || email,
       UserAttributes: userAttributes,
       TemporaryPassword: password,
-      MessageAction: 'SUPPRESS',
     });
-
     try {
       const result = await this.cognitoClient.send(command);
       await this.addUserToGroup(email, role);

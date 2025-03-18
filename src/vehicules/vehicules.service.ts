@@ -1,21 +1,27 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Vehicule } from './entities/vehicule.entity';
+import { Vehicule, VehicleCategory } from './entities/vehicule.entity';
+import { CreateVehiculeDto } from './dto/create-vehicle.dto';
+import { UpdateVehicleDto } from './dto/update-vehicle.dto';
+import { S3Service } from '../s3/s3.service';
 
 @Injectable()
 export class VehiclesService {
   constructor(
     @InjectRepository(Vehicule)
     private vehiclesRepository: Repository<Vehicule>,
+    private readonly s3Service: S3Service,
   ) {}
 
-  async createVehicules(data: {
-    name: string;
-    capacity: number;
-    registrationNumber: string;
-    description?: string;
-  }): Promise<Vehicule> {
+  async createVehicule(
+    data: CreateVehiculeDto,
+    file?: Express.Multer.File,
+  ): Promise<Vehicule> {
     try {
       const existingVehicle = await this.vehiclesRepository.findOne({
         where: { registrationNumber: data.registrationNumber },
@@ -27,19 +33,33 @@ export class VehiclesService {
         );
       }
 
-      const vehicle = this.vehiclesRepository.create(data);
+      let imageUrl = null;
+      if (file) {
+        imageUrl = await this.s3Service.uploadFile(file);
+      }
+
+      const vehicle = this.vehiclesRepository.create({ ...data, imageUrl });
       return await this.vehiclesRepository.save(vehicle);
     } catch (error) {
-      if (error.code === '23505') {
-        throw new ConflictException(
-          'A vehicle with this registration number already exists.',
-        );
-      }
       throw error;
     }
   }
 
   async findAll(): Promise<Vehicule[]> {
     return this.vehiclesRepository.find();
+  }
+
+  async updateCategory(
+    id: string,
+    category: VehicleCategory,
+  ): Promise<Vehicule> {
+    const vehicle = await this.vehiclesRepository.findOne({ where: { id } });
+
+    if (!vehicle) {
+      throw new NotFoundException(`Vehicle with ID "${id}" not found`);
+    }
+
+    vehicle.category = category;
+    return await this.vehiclesRepository.save(vehicle);
   }
 }

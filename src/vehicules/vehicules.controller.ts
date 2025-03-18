@@ -1,30 +1,41 @@
-import { Controller, Post, Get, Body } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Param,
+  UseInterceptors,
+  UploadedFile,
+  Body,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { VehiclesService } from './vehicules.service';
-import { Vehicule } from './entities/vehicule.entity';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { CreateVehiculeDto } from './dto/create-vehicle.dto';
+import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 
-@ApiTags('Vehicles')
-@Controller('vehicles')
+@Controller('vehicules')
 export class VehiclesController {
   constructor(private readonly vehiclesService: VehiclesService) {}
 
-  @ApiOperation({ summary: 'Create a new vehicle type' })
   @Post()
+  @UseInterceptors(FileInterceptor('image'))
   async create(
-    @Body()
-    body: {
-      name: string;
-      capacity: number;
-      registrationNumber: string;
-      description?: string;
-    },
-  ): Promise<Vehicule> {
-    return this.vehiclesService.createVehicules(body);
+    @Body() createVehiculeDto: CreateVehiculeDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.vehiclesService.createVehicule(createVehiculeDto, file);
   }
 
-  @ApiOperation({ summary: 'List all available vehicle types' })
   @Get()
-  async findAll(): Promise<Vehicule[]> {
+  async findAll() {
     return this.vehiclesService.findAll();
+  }
+
+  @Patch(':id/category')
+  async updateCategory(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateVehicleDto,
+  ) {
+    return this.vehiclesService.updateCategory(id, updateDto.category);
   }
 }
