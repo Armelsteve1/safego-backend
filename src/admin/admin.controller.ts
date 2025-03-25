@@ -43,14 +43,13 @@ export class AdminController {
   async listUsers() {
     return this.cognitoService.listUsers();
   }
-
   @ApiOperation({ summary: 'List users pending validation' })
   @ApiResponse({
     status: 200,
     description: 'Pending users retrieved successfully',
   })
   @ApiResponse({ status: 403, description: 'Forbidden' })
-  @Get('pending-validation')
+  @Get('pending')
   @Roles('admin')
   async listPendingValidationUsers() {
     return this.cognitoService.listPendingValidationUsers();

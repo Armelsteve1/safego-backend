@@ -1,7 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import {
   CognitoIdentityProviderClient,
-  AdminCreateUserCommand,
   AdminInitiateAuthCommand,
   AdminAddUserToGroupCommand,
   AdminUpdateUserAttributesCommand,
@@ -10,12 +9,15 @@ import {
   ConfirmSignUpCommand,
   GlobalSignOutCommand,
   AdminListGroupsForUserCommand,
-  AdminSetUserPasswordCommand,
   ForgotPasswordCommand,
+  SignUpCommand,
   ConfirmForgotPasswordCommand,
   InitiateAuthCommand,
+  // ResendConfirmationCodeCommand,
+  AdminGetUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import * as crypto from 'crypto';
+import * as jwt from 'jsonwebtoken';
 
 @Injectable()
 export class CognitoService {
@@ -29,6 +31,37 @@ export class CognitoService {
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
       },
     });
+  }
+
+  async getUserFromCognito(accessToken: string) {
+    try {
+      const command = new AdminGetUserCommand({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID!,
+        Username: accessToken,
+      });
+
+      const user = await this.cognitoClient.send(command);
+      return user;
+    } catch (error) {
+      throw new UnauthorizedException('Unable to fetch user from Cognito');
+    }
+  }
+  async getUserNameFromCognito(accessToken: string) {
+    try {
+      const decoded = jwt.decode(accessToken);
+      const sub = decoded?.sub;
+      if (!sub) {
+        throw new UnauthorizedException('Token invalide (sub manquant)');
+      }
+      const command = new AdminGetUserCommand({
+        UserPoolId: String(process.env.COGNITO_USER_POOL_ID),
+        Username: String(sub),
+      });
+      const user = await this.cognitoClient.send(command);
+      return user;
+    } catch (error) {
+      throw new UnauthorizedException('Unable to fetch user from Cognito');
+    }
   }
 
   /**
@@ -63,11 +96,14 @@ export class CognitoService {
     role: string,
     family_name?: string,
     given_name?: string,
-    username?: string,
     agencyName?: string,
   ) {
+    if (!role) {
+      throw new UnauthorizedException('Role is required and cannot be null.');
+    }
+
     if (role === 'agency' && !agencyName) {
-      throw new UnauthorizedException('Agency must provide an agencyName');
+      throw new UnauthorizedException('Agency must provide an agencyName.');
     }
 
     const userAttributes = [
@@ -84,30 +120,22 @@ export class CognitoService {
     if (role === 'agency')
       userAttributes.push({ Name: 'custom:agencyName', Value: agencyName });
 
-    const command = new AdminCreateUserCommand({
-      UserPoolId: process.env.COGNITO_USER_POOL_ID!,
-      Username: username || email,
-      UserAttributes: userAttributes,
-      TemporaryPassword: password,
-      MessageAction: 'SUPPRESS',
-    });
-
     try {
+      const command = new SignUpCommand({
+        ClientId: process.env.COGNITO_CLIENT_ID!,
+        Username: email,
+        Password: password,
+        UserAttributes: userAttributes,
+        SecretHash: this.calculateSecretHash(email),
+      });
+
       const result = await this.cognitoClient.send(command);
       await this.addUserToGroup(email, role);
 
-      // ✅ Définir le mot de passe permanent
-      const setPasswordCommand = new AdminSetUserPasswordCommand({
-        UserPoolId: process.env.COGNITO_USER_POOL_ID!,
-        Username: email,
-        Password: password,
-        Permanent: true,
-      });
-      await this.cognitoClient.send(setPasswordCommand);
-
       return {
-        message: `User registered in group ${role}. Please verify your email.`,
-        userId: result?.User?.Username,
+        message:
+          'User registered successfully. Please verify your email with the code sent.',
+        userId: result?.UserSub,
       };
     } catch (error) {
       throw new UnauthorizedException(error.message);
@@ -369,6 +397,20 @@ export class CognitoService {
     }
   }
 
+  // async resendConfirmationCode(username: string) {
+  //   try {
+  //     const command = new ResendConfirmationCodeCommand({
+  //       ClientId: process.env.COGNITO_CLIENT_ID!,
+  //       Username: username,
+  //       SecretHash: this.calculateSecretHash(username),
+  //     });
+
+  //     await this.cognitoClient.send(command);
+  //     return { message: "A new verification code has been sent to your email." };
+  //   } catch (error) {
+  //     throw new UnauthorizedException(error.message);
+  //   }
+  // }
   /**
    * 🔍 Lister tous les utilisateurs (Admin uniquement)
    */
@@ -393,6 +435,94 @@ export class CognitoService {
       }));
     } catch (error) {
       throw new UnauthorizedException(`Failed to list users: ${error.message}`);
+    }
+  }
+  /**
+   * 🔍 Récupérer les informations de l'utilisateur connecté
+   */
+  async getUserInfo(accessToken: string) {
+    try {
+      const decoded = jwt.decode(accessToken) as { sub?: string };
+      const username = decoded?.sub;
+
+      if (!username) {
+        throw new UnauthorizedException('Token invalide');
+      }
+
+      const command = new AdminGetUserCommand({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID!,
+        Username: username,
+      });
+
+      const { UserAttributes } = await this.cognitoClient.send(command);
+      const user = (UserAttributes || []).reduce(
+        (acc, attr) => {
+          acc[attr.Name] = attr.Value;
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
+
+      return user;
+    } catch (error) {
+      throw new UnauthorizedException("Impossible de récupérer l'utilisateur.");
+    }
+  }
+
+  /**
+   * 🔄 Modifier les informations de l'utilisateur
+   */
+  async updateUserInfo(
+    token: string,
+    attributes: { Name: string; Value: string }[],
+  ) {
+    try {
+      const decoded = jwt.decode(token) as { sub?: string };
+
+      const username = decoded?.sub;
+      if (!username) {
+        throw new UnauthorizedException(
+          'Token invalide : identifiant manquant',
+        );
+      }
+
+      const command = new AdminUpdateUserAttributesCommand({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID!,
+        Username: username,
+        UserAttributes: attributes,
+      });
+
+      await this.cognitoClient.send(command);
+      return { message: `Utilisateur ${username} mis à jour avec succès.` };
+    } catch (error) {
+      throw new UnauthorizedException(
+        `Mise à jour impossible : ${error.message}`,
+      );
+    }
+  }
+
+  async updateProfilePicture(username: string, pictureUrl: string) {
+    const command = new AdminUpdateUserAttributesCommand({
+      UserPoolId: process.env.COGNITO_USER_POOL_ID!,
+      Username: username,
+      UserAttributes: [
+        {
+          Name: 'picture',
+          Value: pictureUrl,
+        },
+      ],
+    });
+
+    try {
+      await this.cognitoClient.send(command);
+      return {
+        message: 'Photo de profil mise à jour avec succès',
+        picture: pictureUrl,
+      };
+    } catch (error) {
+      throw new UnauthorizedException(
+        `Échec mise à jour photo : ${error.message}`,
+      );
     }
   }
 }

@@ -40,9 +40,6 @@ export class User {
   @Column({ nullable: true })
   phoneNumber?: string;
 
-  @OneToMany(() => Trip, (trip) => trip.createdById, { cascade: true })
-  trips: Trip[];
-
   @CreateDateColumn()
   createdAt: Date;
 
