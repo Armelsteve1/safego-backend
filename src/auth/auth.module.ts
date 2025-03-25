@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { CognitoAuthGuard } from './cognito.guard';
 import { JwtStrategy } from './jwt.strategy';
+import { S3Service } from '../s3/s3.service';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { JwtStrategy } from './jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [CognitoService, CognitoAuthGuard, JwtStrategy],
+  providers: [CognitoService, CognitoAuthGuard, JwtStrategy, S3Service],
   exports: [CognitoService, CognitoAuthGuard, JwtStrategy, JwtModule],
 })
 export class AuthModule {}

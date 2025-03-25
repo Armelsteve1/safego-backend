@@ -1,4 +1,17 @@
-import { Controller, Post, Body, Delete, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Delete,
+  Req,
+  UseGuards,
+  Get,
+  Put,
+  UnauthorizedException,
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { CognitoService } from './cognito.service';
 import { CognitoAuthGuard } from './cognito.guard';
 import {
@@ -7,11 +20,16 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-
+import { FileInterceptor } from '@nestjs/platform-express';
+import { S3Service } from '../s3/s3.service';
+import * as jwt from 'jsonwebtoken';
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly cognitoService: CognitoService) {}
+  constructor(
+    private readonly cognitoService: CognitoService,
+    private readonly s3Service: S3Service,
+  ) {}
 
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User successfully registered' })
@@ -25,7 +43,6 @@ export class AuthController {
       role: string;
       family_name?: string;
       given_name?: string;
-      username?: string;
       agencyName?: string;
     },
   ) {
@@ -35,11 +52,9 @@ export class AuthController {
       body.role,
       body.family_name,
       body.given_name,
-      body.username,
       body.agencyName,
     );
   }
-
   @ApiOperation({ summary: 'User login' })
   @ApiResponse({ status: 200, description: 'User successfully logged in' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -94,5 +109,63 @@ export class AuthController {
   @Post('refresh-token')
   async refresh(@Body() body: { refreshToken: string; username: string }) {
     return this.cognitoService.refreshToken(body.refreshToken, body.username);
+  }
+  /**
+   * 🔍 Récupérer les informations de l'utilisateur connecté
+   */
+  @UseGuards(CognitoAuthGuard)
+  @Get('profile')
+  async getUserProfile(@Req() req) {
+    const accessToken = req.headers.authorization?.replace('Bearer ', '');
+    if (!accessToken) {
+      throw new UnauthorizedException('Token manquant');
+    }
+    return this.cognitoService.getUserInfo(accessToken);
+  }
+  @UseGuards(CognitoAuthGuard)
+  @Put('profile/update')
+  async updateUserProfile(
+    @Req() req,
+    @Body() updateData: Record<string, string>,
+  ) {
+    const accessToken = req.headers.authorization?.replace('Bearer ', '');
+    if (!accessToken) {
+      throw new UnauthorizedException('Token manquant');
+    }
+    const allowedAttributes = [
+      'given_name',
+      'family_name',
+      'phone_number',
+      'custom:agencyName',
+      'picture',
+    ];
+
+    const attributes = Object.entries(updateData)
+      .filter(([key]) => allowedAttributes.includes(key))
+      .map(([key, value]) => ({ Name: key, Value: value }));
+
+    if (attributes.length === 0) {
+      throw new BadRequestException('Aucune donnée valide à mettre à jour.');
+    }
+
+    return this.cognitoService.updateUserInfo(accessToken, attributes);
+  }
+
+  @Put('profile/picture')
+  @UseInterceptors(FileInterceptor('picture'))
+  async updateUserPicture(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req,
+  ) {
+    const accessToken = req.headers.authorization?.replace('Bearer ', '');
+    if (!accessToken || !file) {
+      throw new BadRequestException('Token ou image manquant');
+    }
+
+    const imageUrl = await this.s3Service.uploadFile(file, 'users');
+    await this.cognitoService.updateUserInfo(accessToken, [
+      { Name: 'picture', Value: imageUrl },
+    ]);
+    return { picture: imageUrl };
   }
 }

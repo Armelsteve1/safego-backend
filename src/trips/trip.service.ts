@@ -32,18 +32,35 @@ export class TripService {
     tripData: CreateTripDto,
   ): Promise<Trip> {
     const cognitoUser = await this.authService.getUserFromCognito(accessToken);
+
     const userIdFromCognito = cognitoUser.UserAttributes.find(
       (attr) => attr.Name === 'sub',
     )?.Value;
-    const userName =
-      cognitoUser.UserAttributes.find((attr) => attr.Name === 'name')?.Value ||
-      'Inconnu';
+
+    const givenName =
+      cognitoUser.UserAttributes.find((attr) => attr.Name === 'given_name')
+        ?.Value || '';
+    const familyName =
+      cognitoUser.UserAttributes.find((attr) => attr.Name === 'family_name')
+        ?.Value || '';
+    const userName = `${givenName} ${familyName}`.trim() || 'Inconnu';
+
     const userProfilePicture =
       cognitoUser.UserAttributes.find((attr) => attr.Name === 'picture')
         ?.Value || null;
 
+    const userRole =
+      cognitoUser.UserAttributes.find((attr) => attr.Name === 'custom:role')
+        ?.Value || 'driver';
+
+    if (userRole === 'admin') {
+      throw new ForbiddenException(
+        'Un administrateur ne peut pas créer un trajet',
+      );
+    }
+
     if (!userIdFromCognito) {
-      throw new ForbiddenException('Invalid user authentication');
+      throw new ForbiddenException('Authentification utilisateur invalide');
     }
 
     const vehicle = await this.vehicleRepository.findOne({
@@ -51,7 +68,7 @@ export class TripService {
     });
 
     if (!vehicle) {
-      throw new NotFoundException('Vehicle not found');
+      throw new NotFoundException('Véhicule non trouvé');
     }
 
     const existingTrip = await this.tripRepository.findOne({
@@ -60,9 +77,12 @@ export class TripService {
 
     if (existingTrip) {
       throw new ConflictException(
-        'This vehicle is already assigned to a pending trip.',
+        'Ce véhicule est déjà affecté à un trajet en attente',
       );
     }
+
+    const tripType = userRole === 'agency' ? 'agence' : 'covoiturage';
+
     const newTrip = this.tripRepository.create({
       departure: tripData.departure,
       arrival: tripData.arrival,
@@ -76,6 +96,8 @@ export class TripService {
       vehicle,
       driverName: userName,
       driverProfilePicture: userProfilePicture,
+      isValidated: false,
+      tripType,
     });
 
     return await this.tripRepository.save(newTrip);
@@ -92,26 +114,28 @@ export class TripService {
     const query = this.tripRepository
       .createQueryBuilder('trip')
       .leftJoinAndSelect('trip.vehicle', 'vehicle')
-      .where('trip.status = :status', { status: 'validated' });
+      .where('trip.status != :validated', { validated: 'validated' })
+      .andWhere('trip.departureDate >= CURRENT_DATE');
 
     if (departure) {
       query.andWhere('LOWER(trip.departure) LIKE LOWER(:departure)', {
         departure: `%${departure}%`,
       });
     }
+
     if (arrival) {
       query.andWhere('LOWER(trip.arrival) LIKE LOWER(:arrival)', {
         arrival: `%${arrival}%`,
       });
     }
+
     if (departureDate) {
-      query.andWhere('DATE(trip.departureDate) = :departureDate', {
+      query.andWhere('trip.departureDate = :departureDate', {
         departureDate,
       });
     }
 
-    const trips = await query.getMany();
-    return trips;
+    return await query.getMany();
   }
 
   /**
@@ -133,7 +157,11 @@ export class TripService {
   /**
    * 🔥 4️⃣ Modifier un trajet (seul le créateur peut le faire)
    */
-  async updateTrip(userId: string, id: string, updateData): Promise<Trip> {
+  async updateTrip(
+    userId: string,
+    id: string,
+    updateData: Partial<Trip>,
+  ): Promise<Trip> {
     const trip = await this.tripRepository.findOne({ where: { id } });
 
     if (!trip) {
@@ -169,37 +197,42 @@ export class TripService {
   /**
    * 🔥 6️⃣ Valider un trajet (Admin uniquement)
    */
-  async validateTrip(user: any, id: string): Promise<Trip> {
-    if (!user || !user.groups || user.groups.length === 0) {
-      throw new ForbiddenException('User role is missing or invalid.');
-    }
-
-    const userRole = user.groups[0].toLowerCase();
-    if (userRole !== UserRole.ADMIN.toLowerCase()) {
+  async validateTrip(user: { role: string }, tripId: string): Promise<Trip> {
+    if (user.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Only admins can validate trips');
     }
 
-    const trip = await this.tripRepository.findOne({ where: { id } });
+    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
 
     if (!trip) {
       throw new NotFoundException('Trip not found');
     }
 
-    trip.status = 'validated';
+    trip.isValidated = true;
     return await this.tripRepository.save(trip);
   }
 
-  /**
-   * 🔥 7️⃣ Lister les trajets en attente de validation (Admin)
-   */
-  async getPendingTrips(user: any): Promise<Trip[]> {
-    if (user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Only admins can view pending trips');
+  async validateOwnTrip(accessToken: string, tripId: string): Promise<Trip> {
+    const cognitoUser =
+      await this.authService.getUserNameFromCognito(accessToken);
+    const userId = cognitoUser.UserAttributes.find(
+      (attr) => attr.Name === 'sub',
+    )?.Value;
+
+    if (!userId) {
+      throw new ForbiddenException('Utilisateur non authentifié');
+    }
+    const trip = await this.tripRepository.findOne({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException('Trajet non trouvé');
     }
 
-    return this.tripRepository.find({
-      where: { status: 'pending' },
-      relations: ['vehicle'],
-    });
+    if (trip.createdById !== userId) {
+      throw new ForbiddenException(
+        'Vous ne pouvez valider que vos propres trajets',
+      );
+    }
+    trip.status = 'validated';
+    return await this.tripRepository.save(trip);
   }
 }

@@ -44,6 +44,12 @@ export class Vehicule {
   @Column({ nullable: true })
   imageUrl?: string;
 
+  @Column({ type: 'uuid' })
+  userId: string;
+
+  @Column({ default: false })
+  isValidated: boolean;
+
   @OneToMany(() => Trip, (trip) => trip.vehicle)
   trips: Trip[];
 }
