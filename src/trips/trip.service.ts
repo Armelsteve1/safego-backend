@@ -117,6 +117,10 @@ export class TripService {
       .where('trip.status != :validated', { validated: 'validated' })
       .andWhere('trip.departureDate >= CURRENT_DATE');
 
+    query.andWhere(
+      `(trip.departureDate > CURRENT_DATE OR (trip.departureDate = CURRENT_DATE AND trip.departureTime >= CURRENT_TIME))`,
+    );
+
     if (departure) {
       query.andWhere('LOWER(trip.departure) LIKE LOWER(:departure)', {
         departure: `%${departure}%`,
@@ -152,6 +156,13 @@ export class TripService {
     }
 
     return trip;
+  }
+
+  async findByUsers(createdById: string): Promise<Trip[]> {
+    return this.tripRepository.find({
+      where: { createdById },
+      relations: ['vehicle'],
+    });
   }
 
   /**

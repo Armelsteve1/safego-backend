@@ -68,4 +68,40 @@ export class VehiclesService {
     vehicle.isValidated = true;
     return await this.vehiclesRepository.save(vehicle);
   }
+  async updateVehicle(
+    id: string,
+    userId: string,
+    data: CreateVehiculeDto,
+  ): Promise<Vehicule> {
+    const vehicle = await this.vehiclesRepository.findOne({ where: { id } });
+
+    if (!vehicle) {
+      throw new NotFoundException(`Vehicle with ID "${id}" not found`);
+    }
+
+    if (vehicle.userId !== userId) {
+      throw new ConflictException(
+        `You are not authorized to update this vehicle.`,
+      );
+    }
+
+    Object.assign(vehicle, data);
+    return await this.vehiclesRepository.save(vehicle);
+  }
+
+  async deleteVehicle(id: string, userId: string): Promise<void> {
+    const vehicle = await this.vehiclesRepository.findOne({ where: { id } });
+
+    if (!vehicle) {
+      throw new NotFoundException(`Vehicle with ID "${id}" not found`);
+    }
+
+    if (vehicle.userId !== userId) {
+      throw new ConflictException(
+        `You are not authorized to delete this vehicle.`,
+      );
+    }
+
+    await this.vehiclesRepository.remove(vehicle);
+  }
 }
