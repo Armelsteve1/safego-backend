@@ -4,6 +4,7 @@ import {
   Post,
   Patch,
   Param,
+  Delete,
   Body,
   UseGuards,
   Req,
@@ -13,6 +14,7 @@ import {
   HttpException,
   HttpStatus,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { TripService } from './trip.service';
 import { CognitoAuthGuard } from '../auth/cognito.guard';
@@ -35,12 +37,12 @@ export class TripController {
   constructor(private readonly tripService: TripService) {}
 
   /**
-   * 🟢 Créer un trajet
+   * 🟢 Create a trip
    */
-  @ApiOperation({ summary: 'Créer un trajet (Utilisateurs authentifiés)' })
+  @ApiOperation({ summary: 'Create a trip (Authenticated users)' })
   @ApiResponse({
     status: 201,
-    description: 'Trajet créé avec succès.',
+    description: 'Trip successfully created.',
     type: Trip,
   })
   @UseGuards(CognitoAuthGuard)
@@ -58,12 +60,12 @@ export class TripController {
   }
 
   /**
-   * 🟢 Récupérer tous les trajets validés
+   * 🟢 Retrieve all validated trips
    */
-  @ApiOperation({ summary: 'Obtenir tous les trajets validés' })
+  @ApiOperation({ summary: 'Get all validated trips' })
   @ApiResponse({
     status: 200,
-    description: 'Liste des trajets validés.',
+    description: 'List of validated trips.',
     type: [Trip],
   })
   @Get('')
@@ -76,39 +78,100 @@ export class TripController {
   }
 
   /**
-   * 🟢 Récupérer un trajet par ID
+   * 🟢 Retrieve a trip by ID
    */
-  @ApiOperation({ summary: 'Obtenir un trajet par son ID' })
-  @ApiResponse({ status: 200, description: 'Détails du trajet.', type: Trip })
-  @ApiResponse({ status: 404, description: 'Trajet non trouvé.' })
+  @ApiOperation({ summary: 'Get a trip by its ID' })
+  @ApiResponse({ status: 200, description: 'Trip details.', type: Trip })
+  @ApiResponse({ status: 404, description: 'Trip not found.' })
   @Get(':id')
   async getTripById(@Param('id') id: string) {
     return this.tripService.getTripById(id);
   }
 
+  @ApiOperation({ summary: 'Get all trips created by a user' })
+  @ApiResponse({ status: 200, description: 'List of trips.', type: [Trip] })
+  @ApiResponse({ status: 404, description: 'No trips found for this user.' })
+  @UseGuards(CognitoAuthGuard, RolesGuard)
+  @Roles('driver', 'agency')
+  @Get('user/:createdById')
+  async getTripsByUser(
+    @Param('createdById') createdById: string,
+  ): Promise<Trip[]> {
+    const trips = await this.tripService.findByUsers(createdById);
+
+    if (!trips || trips.length === 0) {
+      throw new NotFoundException('No trips found for this user');
+    }
+
+    return trips;
+  }
+
   /**
-   * 🟢 Valider un trajet (Admin uniquement)
+   * 🟢 Validate a trip (Admin only)
    */
-  @ApiOperation({ summary: 'Valider un trajet (Admin uniquement)' })
+  @ApiOperation({ summary: 'Validate a trip (Admin only)' })
   @ApiResponse({
     status: 200,
-    description: 'Trajet validé avec succès.',
+    description: 'Trip successfully validated.',
     type: Trip,
   })
-  @ApiResponse({ status: 403, description: 'Accès interdit.' })
+  @ApiResponse({ status: 403, description: 'Access forbidden.' })
   @UseGuards(CognitoAuthGuard, RolesGuard)
   @Roles('admin')
   @Patch('validate/:id')
   async validateTrip(@Req() req, @Param('id') id: string) {
     return this.tripService.validateTrip(req.user, id);
   }
+
   @Patch('endOfTrip/:id')
   async validateOwnTrip(@Req() req: Request, @Param('id') tripId: string) {
     const headers = req.headers as { authorization?: string };
     const accessToken = headers.authorization?.replace('Bearer ', '');
     if (!accessToken) {
-      throw new UnauthorizedException('Token manquant');
+      throw new UnauthorizedException('Missing token');
     }
     return this.tripService.validateOwnTrip(accessToken, tripId);
+  }
+
+  /**
+   * 🟢 Update a trip (only the creator can do it)
+   */
+  @ApiOperation({ summary: 'Update a trip (only the creator can do it)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Trip successfully updated.',
+    type: Trip,
+  })
+  @ApiResponse({ status: 404, description: 'Trip not found.' })
+  @ApiResponse({ status: 403, description: 'Access forbidden.' })
+  @UseGuards(CognitoAuthGuard)
+  @Patch(':id')
+  async updateTrip(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() updateData: Partial<Trip>,
+  ): Promise<Trip> {
+    const userIdFromToken = req.user?.id;
+    return this.tripService.updateTrip(userIdFromToken, id, updateData);
+  }
+
+  /**
+   * 🟢 Delete a trip (only the creator can do it)
+   */
+  @ApiOperation({ summary: 'Delete a trip (only the creator can do it)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Trip successfully deleted.',
+  })
+  @ApiResponse({ status: 404, description: 'Trip not found.' })
+  @ApiResponse({ status: 403, description: 'Access forbidden.' })
+  @UseGuards(CognitoAuthGuard)
+  @Delete('delete/:id')
+  async deleteTrip(
+    @Req() req: any,
+    @Param('id') id: string,
+  ): Promise<{ message: string }> {
+    const userIdFromToken = req.user?.id;
+    return this.tripService.deleteTrip(userIdFromToken, id);
   }
 }
