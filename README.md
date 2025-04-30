@@ -1,4 +1,3 @@
-```markdown
 # 🛡️ SafeGo – Backend
 
 **SafeGo** is a backend application built with **NestJS**, designed to offer a secure and scalable API. It handles authentication via AWS Cognito, file storage via AWS S3, and data persistence using PostgreSQL.
@@ -32,7 +31,7 @@
 
 ```bash
 # 1. Clone the repository (private access required)
-git clone git@github.com:Armelsteve1/safego-backend.git
+git clone git@github.com:<your-org>/safego-backend.git
 
 # 2. Navigate into the project folder
 cd safego-backend
@@ -42,9 +41,7 @@ npm install
 
 # 4. Start the services using Docker
 docker-compose up --build
-```
 
----
 
 ## 🔐 Environment Variables (`.env`)
 
