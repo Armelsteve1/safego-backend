@@ -1,124 +1,169 @@
-# 🛡️ SafeGo – Backend
+# 🛡️ SafeGo – Backend API
 
-**SafeGo** is a backend application built with **NestJS**, designed to offer a secure and scalable API. It handles authentication via AWS Cognito, file storage via AWS S3, and data persistence using PostgreSQL.
+Welcome to the official backend of **SafeGo**, a secure ride-sharing platform built with NestJS, designed for scalability, security, and seamless developer collaboration.
 
----
+This repository contains the backend logic, APIs, authentication, user management, trip handling, and media uploads used by the SafeGo application.
 
-## 🚀 Main Technologies
-
-- **NestJS** (TypeScript)
-- **PostgreSQL** (via TypeORM)
-- **AWS Cognito** (Authentication)
-- **AWS S3** (File Uploads)
-- **Docker & Docker Compose**
-- **Zod** (Schema validation)
-- **Prettier / ESLint** (Code formatting & linting)
-- **Jest** (e2e testing)
+> 🚧 This is a **private repository** maintained on GitHub: [`git@github.com:Armelsteve1/safego-backend.git`](git@github.com:Armelsteve1/safego-backend.git)
 
 ---
 
-## ⚙️ Requirements
+## ⚙️ Tech Stack
 
-- Node.js (v18+ recommended)
+| Layer                | Tech                        |
+|---------------------|-----------------------------|
+| Language            | TypeScript                  |
+| Framework           | NestJS                      |
+| Database            | PostgreSQL (via TypeORM)    |
+| Authentication      | AWS Cognito                 |
+| Media Storage       | AWS S3                      |
+| Containerization    | Docker + Docker Compose     |
+| Validation          | Zod                         |
+| Linting & Format    | ESLint + Prettier           |
+| Testing             | Jest (E2E)                  |
+
+---
+
+## 🗂️ Project Structure
+
+```
+safego-backend/
+├── src/
+│   ├── auth/           → AWS Cognito-based auth
+│   ├── users/          → User management
+│   ├── trips/          → Trip creation & search
+│   ├── s3/             → S3 image/file upload
+│   ├── common/         → Guards, Interceptors, Utils
+│   ├── config/         → Environment & service configs
+│   └── main.ts         → Application entry point
+├── test/               → End-to-end test cases
+├── docker-compose.yml  → Local Docker orchestration
+├── Dockerfile          → API container config
+├── .env                → Env vars (excluded from repo)
+```
+
+---
+
+## 🧪 Local Setup (Dev)
+
+### ✅ Prerequisites
+
+- Node.js `v18+`
+- npm
 - Docker & Docker Compose
-- AWS account (Cognito & S3 access)
-- PostgreSQL (locally or via Docker)
-- `.env` file with all required environment variables
+- AWS account with:
+  - A **Cognito User Pool**
+  - A **S3 Bucket**
 
----
-
-## 📦 Installation
+### 🚀 Steps
 
 ```bash
-# 1. Clone the repository (private access required)
-git clone git@github.com:<your-org>/safego-backend.git
-
-# 2. Navigate into the project folder
+# 1. Clone the private repo
+git clone git@github.com:Armelsteve1/safego-backend.git
 cd safego-backend
 
-# 3. Install dependencies
+# 2. Install dependencies
 npm install
 
-# 4. Start the services using Docker
+# 3. Create the .env file
+cp .env.example .env
+# Then update it with your own credentials
+
+# 4. Start the backend + PostgreSQL
 docker-compose up --build
-
-
-## 🔐 Environment Variables (`.env`)
-
-Create a `.env` file at the root of the project with the following variables:
-
-```
-PORT=3000
-DATABASE_URL=postgres://user:password@localhost:5432/safego
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=...
-AWS_COGNITO_USER_POOL_ID=...
-AWS_COGNITO_CLIENT_ID=...
-S3_BUCKET_NAME=...
 ```
 
 ---
 
-## 🧪 Run Tests
+## 🔐 .env Configuration
+
+Create a `.env` file at the root with the following variables:
+
+```env
+PORT=3000
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/safego
+
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=your-region
+S3_BUCKET_NAME=your-bucket-name
+
+AWS_COGNITO_USER_POOL_ID=your-user-pool-id
+AWS_COGNITO_CLIENT_ID=your-client-id
+```
+
+---
+
+## 🐳 Docker Usage
+
+To start the full backend environment:
+
+```bash
+docker-compose up --build
+```
+
+To stop it:
+
+```bash
+docker-compose down
+```
+
+---
+
+## 🧹 Common Commands
+
+```bash
+npm run start:dev      # Start in development mode
+npm run lint           # Run ESLint checks
+npm run format         # Format code using Prettier
+npm run build          # Compile the app
+npm run test:e2e       # Run end-to-end tests
+```
+
+---
+
+## 🧪 Testing
+
+End-to-end tests are written using **Jest**.
 
 ```bash
 npm run test:e2e
 ```
 
----
-
-## 🧹 Useful Scripts
-
-```bash
-npm run start:dev     # Start the app in development mode
-npm run lint          # Run linter
-npm run format        # Format code using Prettier
-npm run build         # Build the app
-```
+Ensure your `.env.test` is configured properly before running tests.
 
 ---
 
-## 🐳 Docker
+## 🤝 Contributing Guidelines
 
-The project includes a working Docker and Docker Compose setup. It automatically sets up the API and a PostgreSQL database.
+All collaborators must:
 
-```bash
-docker-compose up --build
-```
+1. Work on a new branch:  
+   `git checkout -b feature/your-feature-name`
 
----
-
-## 🧠 Project Structure
-
-```
-src/
-├── auth/            # Authentication via AWS Cognito
-├── users/           # User management
-├── trips/           # Trip management
-├── s3/              # AWS S3 upload handling
-├── common/          # Middlewares, Guards, Interceptors
-├── config/          # App configurations
-main.ts              # Application entry point
-```
+2. Follow coding standards (`ESLint`, `Prettier`)
+3. Document any new endpoints (Swagger coming soon)
+4. Create Pull Requests with meaningful messages
 
 ---
 
-## 🤝 Contributing
+## 📂 Future Improvements
 
-1. Fork this repo (if permitted)
-2. Create a new branch (`git checkout -b feature/my-feature`)
-3. Commit your changes (`git commit -am 'Add new feature'`)
-4. Push to your branch (`git push origin feature/my-feature`)
-5. Open a Pull Request
+- Swagger documentation
+- CI/CD pipelines
+- Unit test coverage
+- Request rate limiting
+- Role-based permissions
 
 ---
 
 ## 📬 Contact
 
-For access requests or questions, please reach out to the project administrator.
-```
+If you need access or want to join the team, contact the repository owner:  
+**Armel Steve** via GitHub: [`@Armelsteve1`](https://github.com/Armelsteve1)
 
 ---
 
-Let me know if you'd like this inserted into your actual project files.
+## 📄 License
+
+This project is private and not licensed for public use.
